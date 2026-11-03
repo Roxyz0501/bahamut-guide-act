@@ -1,0 +1,12 @@
+bin/
+obj/
+dist/
+artifacts/
+research/
+*.user
+*.log
+act/
+act.zip
+Backups/
+GuideData/
+*.bak

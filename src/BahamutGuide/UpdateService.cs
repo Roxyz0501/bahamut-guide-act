@@ -1,0 +1,197 @@
+using System;
+using System.IO;
+using System.Linq;
+using System.Net.Http;
+using System.Reflection;
+using System.Text;
+using System.Threading;
+using System.Threading.Tasks;
+
+namespace BahamutGuide
+{
+    internal sealed class UpdateService : IDisposable
+    {
+        private const long MaximumDownloadBytes = 100L * 1024 * 1024;
+        private readonly HttpClient client;
+        private string cachedReleaseJson;
+        private System.Net.Http.Headers.EntityTagHeaderValue releaseEtag;
+        private DateTime cacheExpires;
+        internal Func<DateTime> UtcNow = () => DateTime.UtcNow;
+
+        public UpdateService() : this(new HttpClientHandler { AllowAutoRedirect = false }) { }
+
+        internal UpdateService(HttpMessageHandler handler)
+        {
+            client = new HttpClient(handler) { Timeout = TimeSpan.FromSeconds(15), MaxResponseContentBufferSize = 1024 * 1024 };
+            client.DefaultRequestHeaders.UserAgent.ParseAdd("BahamutGuide/" + Assembly.GetExecutingAssembly().GetName().Version.ToString(3));
+            client.DefaultRequestHeaders.Accept.ParseAdd("application/vnd.github+json");
+        }
+
+        public async Task<UpdateCheckResult> CheckAsync(Version currentVersion, CancellationToken cancellationToken)
+        {
+            if (!UpdateConfiguration.IsConfigured)
+                return new UpdateCheckResult { Status = UpdateCheckStatus.RepositoryNotConfigured };
+            try
+            {
+                EnsureAllowedUri(new Uri(UpdateConfiguration.ReleasesApiUrl), true);
+                return await CheckFromFetcherAsync(async () =>
+                {
+                    if (cachedReleaseJson != null && UtcNow() < cacheExpires) return cachedReleaseJson;
+                    using (var request = new HttpRequestMessage(HttpMethod.Get, UpdateConfiguration.ReleasesApiUrl))
+                    {
+                        if (releaseEtag != null) request.Headers.IfNoneMatch.Add(releaseEtag);
+                        using (var response = await client.SendAsync(request, cancellationToken).ConfigureAwait(false))
+                        {
+                        if (response.StatusCode == System.Net.HttpStatusCode.NotModified && cachedReleaseJson != null) { cacheExpires = UtcNow().AddMinutes(1); return cachedReleaseJson; }
+                        response.EnsureSuccessStatusCode();
+                        var json = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
+                        if (EvaluateResponse(json, currentVersion).Status != UpdateCheckStatus.Failed) { cachedReleaseJson = json; releaseEtag = response.Headers.ETag; cacheExpires = UtcNow().AddMinutes(1); }
+                        return json;
+                        }
+                    }
+                }, currentVersion).ConfigureAwait(false);
+            }
+            catch (Exception ex)
+            {
+                return new UpdateCheckResult { Status = UpdateCheckStatus.Failed, Error = ex.GetBaseException().Message };
+            }
+        }
+
+        internal static async Task<UpdateCheckResult> CheckFromFetcherAsync(Func<Task<string>> fetcher, Version currentVersion)
+        {
+            try
+            {
+                if (fetcher == null) throw new ArgumentNullException("fetcher");
+                return EvaluateResponse(await fetcher().ConfigureAwait(false), currentVersion);
+            }
+            catch (Exception ex)
+            {
+                return new UpdateCheckResult { Status = UpdateCheckStatus.Failed, Error = ex.GetBaseException().Message };
+            }
+        }
+
+        internal static UpdateCheckResult EvaluateResponse(string json, Version currentVersion)
+        {
+            try
+            {
+                var release = ReleaseParser.ParseStableReleases(json).FirstOrDefault();
+                if (release == null) return new UpdateCheckResult { Status = UpdateCheckStatus.NoStableRelease };
+                SemVersion parsedCurrent;
+                if (currentVersion == null || !SemVersion.TryParse(currentVersion.Major + "." + currentVersion.Minor + "." + Math.Max(0, currentVersion.Build), out parsedCurrent))
+                    throw new FormatException("Current version is not valid SemVer.");
+                return new UpdateCheckResult
+                {
+                    Status = release.Version.CompareTo(parsedCurrent) > 0 ? UpdateCheckStatus.UpdateAvailable : UpdateCheckStatus.UpToDate,
+                    Release = release
+                };
+            }
+            catch (Exception ex)
+            {
+                return new UpdateCheckResult { Status = UpdateCheckStatus.Failed, Error = ex.GetBaseException().Message };
+            }
+        }
+
+        public async Task<PreparedUpdate> DownloadAndVerifyAsync(ReleaseInfo release, CancellationToken cancellationToken)
+        {
+            using (var deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken))
+            {
+                deadline.CancelAfter(TimeSpan.FromMinutes(2));
+                return await DownloadAndVerifyCoreAsync(release, deadline.Token).ConfigureAwait(false);
+            }
+        }
+
+        private async Task<PreparedUpdate> DownloadAndVerifyCoreAsync(ReleaseInfo release, CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            if (release == null) throw new ArgumentNullException("release");
+            var expectedZip = "BahamutGuide-v" + release.Version + ".zip";
+            var alternateZip = "BahamutGuide-" + release.Version + ".zip";
+            var zip = release.Assets.FirstOrDefault(x => string.Equals(x.Name, expectedZip, StringComparison.OrdinalIgnoreCase) || string.Equals(x.Name, alternateZip, StringComparison.OrdinalIgnoreCase));
+            var expectedManifest = "BahamutGuide-v" + release.Version + ".sha256";
+            var manifest = release.Assets.FirstOrDefault(x => string.Equals(x.Name, expectedManifest, StringComparison.OrdinalIgnoreCase)) ??
+                release.Assets.FirstOrDefault(x => string.Equals(x.Name, zip == null ? string.Empty : zip.Name + ".sha256", StringComparison.OrdinalIgnoreCase)) ??
+                release.Assets.FirstOrDefault(x => string.Equals(x.Name, "SHA256SUMS.txt", StringComparison.OrdinalIgnoreCase));
+            if (zip == null || manifest == null) throw new InvalidDataException("UpdateAssetMissing");
+            var assetPrefix = "https://github.com/" + UpdateConfiguration.RepositoryOwner + "/" + UpdateConfiguration.RepositoryName + "/releases/download/" + release.Tag + "/";
+            if (!string.Equals(zip.DownloadUrl, assetPrefix + zip.Name, StringComparison.Ordinal) || !string.Equals(manifest.DownloadUrl, assetPrefix + manifest.Name, StringComparison.Ordinal)) throw new InvalidDataException("InvalidPackage");
+            if (zip.Size <= 0 || zip.Size > MaximumDownloadBytes || manifest.Size > 1024 * 1024) throw new InvalidDataException("InvalidPackage");
+
+            var root = Path.Combine(Path.GetTempPath(), "BahamutGuideUpdater", Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(root);
+            try
+            {
+            var zipPath = Path.Combine(root, "package.zip");
+            var manifestPath = Path.Combine(root, "package.sha256");
+            await DownloadAsync(zip.DownloadUrl, zipPath, cancellationToken).ConfigureAwait(false);
+            await DownloadAsync(manifest.DownloadUrl, manifestPath, cancellationToken).ConfigureAwait(false);
+            var expected = UpdatePackageVerifier.FindManifestHash(File.ReadAllText(manifestPath, Encoding.UTF8), zip.Name);
+            if (!UpdatePackageVerifier.VerifySha256(zipPath, expected)) throw new InvalidDataException("HashFailed");
+
+            var extracted = Path.Combine(root, "extracted");
+            cancellationToken.ThrowIfCancellationRequested();
+            UpdatePackageVerifier.ExtractValidated(zipPath, extracted);
+            var dll = Directory.GetFiles(extracted, UpdateConfiguration.PluginFileName, SearchOption.AllDirectories).SingleOrDefault();
+            var updater = Directory.GetFiles(extracted, UpdateConfiguration.UpdaterFileName, SearchOption.AllDirectories).SingleOrDefault();
+            if (dll == null || updater == null) throw new InvalidDataException("InvalidPackage");
+            UpdatePackageVerifier.ValidatePluginAssembly(dll, release.Version);
+            UpdatePackageVerifier.ValidateUpdaterAssembly(updater, release.Version);
+            cancellationToken.ThrowIfCancellationRequested();
+            return new PreparedUpdate { StagedDllPath = dll, StagedUpdaterPath = updater, DllSha256 = UpdatePackageVerifier.ComputeSha256(dll), Release = release };
+            }
+            catch
+            {
+                try { Directory.Delete(root, true); } catch (IOException) { } catch (UnauthorizedAccessException) { }
+                throw;
+            }
+        }
+
+        private async Task DownloadAsync(string url, string destination, CancellationToken cancellationToken)
+        {
+            var uri = new Uri(url);
+            EnsureAllowedUri(uri, false);
+            HttpResponseMessage response = null;
+            for (var redirect = 0; redirect <= 5; redirect++)
+            {
+                response = await client.GetAsync(uri, HttpCompletionOption.ResponseHeadersRead, cancellationToken).ConfigureAwait(false);
+                var status = (int)response.StatusCode;
+                if (status < 300 || status >= 400) break;
+                var location = response.Headers.Location;
+                response.Dispose(); response = null;
+                if (location == null) throw new InvalidDataException("InvalidPackage");
+                uri = location.IsAbsoluteUri ? location : new Uri(uri, location);
+                EnsureAllowedUri(uri, false);
+            }
+            if (response == null) throw new InvalidDataException("InvalidPackage");
+            using (response)
+            {
+                response.EnsureSuccessStatusCode();
+                if (response.Content.Headers.ContentLength.HasValue && response.Content.Headers.ContentLength.Value > MaximumDownloadBytes)
+                    throw new InvalidDataException("InvalidPackage");
+                using (var input = await response.Content.ReadAsStreamAsync().ConfigureAwait(false))
+                using (var output = File.Create(destination))
+                {
+                    var buffer = new byte[81920];
+                    long total = 0;
+                    int read;
+                    while ((read = await input.ReadAsync(buffer, 0, buffer.Length, cancellationToken).ConfigureAwait(false)) > 0)
+                    {
+                        total += read;
+                        if (total > MaximumDownloadBytes) throw new InvalidDataException("InvalidPackage");
+                        await output.WriteAsync(buffer, 0, read, cancellationToken).ConfigureAwait(false);
+                    }
+                }
+            }
+        }
+
+        internal static void EnsureAllowedUri(Uri uri, bool api)
+        {
+            if (uri == null || uri.Scheme != Uri.UriSchemeHttps || !uri.IsDefaultPort || !string.IsNullOrEmpty(uri.UserInfo)) throw new InvalidDataException("Only HTTPS update URLs are allowed.");
+            var host = uri.Host.ToLowerInvariant();
+            var allowed = api ? host == "api.github.com" :
+                host == "github.com" || host == "objects.githubusercontent.com" || host == "release-assets.githubusercontent.com";
+            if (!allowed) throw new InvalidDataException("Unexpected update host.");
+        }
+
+        public void Dispose() { client.Dispose(); }
+    }
+}
