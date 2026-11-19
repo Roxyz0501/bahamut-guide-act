@@ -16,6 +16,8 @@ internal static partial class Program
         try
         {
             artifacts=Path.Combine(Directory.GetCurrentDirectory(),"artifacts","tests-"+Guid.NewGuid().ToString("N"));Directory.CreateDirectory(artifacts);
+            MapTests();
+            int mapLog=Array.IndexOf(args,"--map-log");if(mapLog>=0)ReplayMap(args[mapLog+1]);
             TransformAndSource();UpdateSafety();SettingsPersistence();Lifecycle();UpdateTraffic();
             foreach(var lang in new[]{"en","ja","zh-CN","ko"})
             {
@@ -86,6 +88,8 @@ internal static partial class Program
                 form.ClientSize=new Size(1000,760);form.Controls.Add(ui);form.Show();Application.DoEvents();CreateHandles(ui);
                 CaptureUi(ui,"ui-"+lang);
                 var nested=Find<TabControl>(ui).Last();nested.SelectedIndex=1;Application.DoEvents();CaptureUi(ui,"source-"+lang);
+                var top=Find<TabControl>(ui).First();top.SelectedIndex=1;Application.DoEvents();
+                Check(top.SelectedTab.Text==Localization.Get(lang,"MapTab") && top.SelectedTab.Text!="MapTab","localized live map "+lang);CaptureUi(ui,"map-"+lang);
                 Check(ui.Controls.Count>0,"headless UI "+lang);form.Close();
             }
         }

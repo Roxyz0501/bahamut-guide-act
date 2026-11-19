@@ -14,6 +14,7 @@ namespace BahamutGuide
         private readonly TabControl tabs = new TabControl();
         private readonly TabPage settingsTab = new TabPage(), updateTab = new TabPage(), supportTab = new TabPage();
         private readonly EditorControl editor;
+        private readonly ArenaTab arenaTab;
         private readonly ComboBox language = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Width = 200 };
         private readonly CheckBox checkUpdates = C();
         private readonly Label languageLabel = L(), hint = L(), versionLabel = L();
@@ -39,10 +40,11 @@ namespace BahamutGuide
             language.Items.AddRange(new object[] { "English", "日本語", "简体中文", "한국어" }); language.SelectedIndex = LanguageIndex(settings.Language);
             checkUpdates.Checked = settings.CheckUpdatesOnStartup;
             editor = new EditorControl(settings);
+            arenaTab = new ArenaTab(settings);
             editor.SettingsChanged += (s, e) => SettingsChanged?.Invoke(this, EventArgs.Empty);
             var header = BuildHeader(); ConfigureTabs();
             settingsTab.Controls.Add(BuildSettingsLayout()); updateTab.Controls.Add(BuildUpdateLayout()); supportTab.Controls.Add(BuildSupportLayout());
-            tabs.TabPages.Add(settingsTab); tabs.TabPages.Add(updateTab); tabs.TabPages.Add(supportTab);
+            tabs.TabPages.Add(settingsTab); tabs.TabPages.Add(arenaTab); tabs.TabPages.Add(updateTab); tabs.TabPages.Add(supportTab);
             var root = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 2, BackColor = BackColor };
             root.RowStyles.Add(new RowStyle(SizeType.Absolute, 76)); root.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
             root.Controls.Add(header, 0, 0); root.Controls.Add(tabs, 0, 1); Controls.Add(root);
@@ -136,7 +138,7 @@ namespace BahamutGuide
             var family = Localization.FontFamily(CurrentLanguage); ApplyFontFamily(this, family);
             headerTitle.Text = T("PluginTab"); headerTitle.Font = new Font(family, 17f, FontStyle.Bold); headerSubtitle.Text = T("Subtitle"); headerSubtitle.Font = new Font(family, 8.5f);
             tabs.Font = new Font(family, 9f, FontStyle.Bold); settingsTab.Text = T("Settings"); updateTab.Text = T("Updates"); supportTab.Text = T("Support");
-            languageLabel.Text = T("Language"); editor.ApplyLanguage();
+            languageLabel.Text = T("Language"); editor.ApplyLanguage(); arenaTab.ApplyLanguage();
             updateTitle.Text = T("UpdateTitle"); updateTitle.Font = new Font(family, 16f, FontStyle.Bold); updateDescription.Text = T("UpdateDescription"); checkUpdates.Text = T("CheckStartup"); checkButton.Text = T("CheckNow"); currentCaption.Text = T("CurrentVersion"); latestCaption.Text = T("LatestVersion"); releaseCaption.Text = T("ReleaseNotes"); updateButton.Text = T("UpdateNow"); laterButton.Text = T("Later");
             supportHeading.Text = T("SupportHeading"); supportHeading.Font = new Font(family, 18f, FontStyle.Bold); supportDescription.Text = T("SupportDescription"); supportOptional.Text = T("SupportBody"); supportOptional.Font = new Font(family, 9.5f, FontStyle.Bold); supportButton.Text = T("SupportButton"); supportSafety.Text = T("SupportSafety");
             if (string.IsNullOrWhiteSpace(releaseNotes.Text)) releaseNotes.Text = T("NoReleaseNotes"); RefreshUpdateMessage(); tabs.Invalidate(); Invalidate(true);

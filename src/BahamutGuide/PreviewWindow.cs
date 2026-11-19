@@ -11,7 +11,7 @@ namespace BahamutGuide
     {
         private readonly Image picture = new Image { Stretch = Stretch.Fill };
         private readonly Border border;
-        private bool shown, locked;
+        private bool shown, locked, dragging;
         internal event Action<double, double> Moved;
         internal PreviewWindow()
         {
@@ -20,7 +20,7 @@ namespace BahamutGuide
             Opacity = 0; Width = 1; Height = 1;
             border = new Border { Background = new SolidColorBrush(Color.FromArgb(1, 0, 0, 0)), Child = picture };
             Content = border;
-            MouseLeftButtonDown += (s, e) => { if (locked) return; DragMove(); Moved?.Invoke(Left, Top); };
+            MouseLeftButtonDown += (s, e) => { if (locked) return; dragging = true; try { DragMove(); Moved?.Invoke(Left, Top); } finally { dragging = false; } };
         }
         internal void Present(BitmapSource bitmap, double x, double y, bool visible, bool fixedPosition)
         {
@@ -29,7 +29,7 @@ namespace BahamutGuide
             if (bitmap != null)
             {
                 if (Width != bitmap.Width) Width = bitmap.Width; if (Height != bitmap.Height) Height = bitmap.Height;
-                if (Left != x) Left = x; if (Top != y) Top = y;
+                if (!dragging) { if (Left != x) Left = x; if (Top != y) Top = y; }
             }
             SetLocked(fixedPosition);
             var opacity = visible && bitmap != null ? 1d : 0d;

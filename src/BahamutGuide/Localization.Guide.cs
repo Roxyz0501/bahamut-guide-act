@@ -4,6 +4,10 @@ namespace BahamutGuide
     {
         private static void AddGuideResources()
         {
+            Add(English,"MapYou=You|MapRisk=Party member in cone|MapSample=Preview|MapTab=Live map|MapEnabled=Show minimap in UCOB|MapPreview=Preview outside the arena|MapLocked=Lock position and pass clicks through|MapCones=Show Earthshaker cones|MapSize=Map size (DIP)|MapReset=Reset position|MapAdjust=Adjustment|MapShaker=Earthshaker|MapHint=Unlock and drag the map to move it. Orange cones follow marked players until each wave resolves. North is always up.");
+            Add(Japanese,"MapYou=自分|MapRisk=味方巻き込み|MapSample=配置例|MapTab=戦闘マップ|MapEnabled=絶バハムートでミニマップを表示|MapPreview=エリア外で配置をプレビュー|MapLocked=位置を固定してクリックを透過|MapCones=アースシェイカーの扇形範囲を表示|MapSize=マップの大きさ（DIP）|MapReset=位置を戻す|MapAdjust=調整あり|MapShaker=シェイカー|MapHint=固定を外してドラッグすると移動できます。北は常に上です。オレンジの扇形は各回の着弾まで対象者の移動に追従します。");
+            Add(Chinese,"MapYou=自己|MapRisk=队友在扇形内|MapSample=预览|MapTab=战斗地图|MapEnabled=在绝巴哈姆特中显示小地图|MapPreview=在场外预览布局|MapLocked=锁定位置并允许点击穿透|MapCones=显示大地摇动的扇形范围|MapSize=地图尺寸（DIP）|MapReset=重置位置|MapAdjust=需要调整|MapShaker=大地摇动|MapHint=解除锁定后可拖动地图。上方始终为北。橙色扇形会跟随目标移动，直到该轮攻击命中。");
+            Add(Korean,"MapYou=나|MapRisk=다른 파티원 피격 위험|MapSample=미리보기|MapTab=전투 지도|MapEnabled=절 바하무트에서 미니맵 표시|MapPreview=지역 밖에서 배치 미리보기|MapLocked=위치 고정 및 클릭 통과|MapCones=어스 셰이커 부채꼴 범위 표시|MapSize=지도 크기 (DIP)|MapReset=위치 초기화|MapAdjust=조정 필요|MapShaker=어스 셰이커|MapHint=잠금을 해제하고 지도를 드래그하세요. 위쪽은 항상 북쪽입니다. 주황색 부채꼴은 각 공격이 적중할 때까지 대상자를 따라갑니다.");
             Add(English,"DragonAdjustment=Adjustment required: second dragon is south (sample)");
             Add(Japanese,"DragonAdjustment=調整あり：北から2体目が南の配置例");
             Add(Chinese,"DragonAdjustment=需要调整：第二条龙在南（示例）");

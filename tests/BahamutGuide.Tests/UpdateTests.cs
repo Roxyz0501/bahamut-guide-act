@@ -28,9 +28,9 @@ internal static partial class Program
         Check(BahamutGuidePlugin.ResolvePluginDllPath(new[] { registration }, instance) == target, "ACT registration priority");
         Throws(() => BahamutGuidePlugin.ResolvePluginDllPath(null, instance), "missing ACT path stops update");
         Directory.CreateDirectory(Path.GetDirectoryName(target)); File.WriteAllText(target, "previous");
-        Throws(() => BahamutGuide.Updater.Program.ReplaceWithBackup(dll, target, hash, "1.0.0", (s, d) => { File.WriteAllText(d, "partial"); throw new IOException("failure"); }), "simulated copy failure");
+        Throws(() => BahamutGuide.Updater.Program.ReplaceWithBackup(dll, target, hash, System.Reflection.AssemblyName.GetAssemblyName(dll).Version.ToString(3), (s, d) => { File.WriteAllText(d, "partial"); throw new IOException("failure"); }), "simulated copy failure");
         Check(File.ReadAllText(target) == "previous", "rollback restores original");
-        BahamutGuide.Updater.Program.ReplaceWithBackup(dll, target, hash, "1.0.0"); Check(UpdatePackageVerifier.VerifySha256(target, hash), "successful replacement");
+        BahamutGuide.Updater.Program.ReplaceWithBackup(dll, target, hash, System.Reflection.AssemblyName.GetAssemblyName(dll).Version.ToString(3)); Check(UpdatePackageVerifier.VerifySha256(target, hash), "successful replacement");
         Check(!ReleaseParser.Summarize("**bold** `code`").Contains("**"), "release Markdown removed");
     }
 

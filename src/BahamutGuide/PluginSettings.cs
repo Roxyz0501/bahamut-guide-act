@@ -15,6 +15,12 @@ namespace BahamutGuide
         public string SourcePath { get; set; } = "";
         public string TargetPath { get; set; } = "";
         public bool AllowSourceUpdates { get; set; }
+        public bool MapEnabled { get; set; }
+        public bool MapLocked { get; set; } = true;
+        public bool MapCones { get; set; } = true;
+        public int MapSize { get; set; } = 320;
+        public double MapX { get; set; } = 80;
+        public double MapY { get; set; } = 80;
         public string LastAppliedHash { get; set; } = "";
         public string LastBackup { get; set; } = "";
         public System.Collections.Generic.List<GroupSetting> Groups { get; set; } = new System.Collections.Generic.List<GroupSetting>();
