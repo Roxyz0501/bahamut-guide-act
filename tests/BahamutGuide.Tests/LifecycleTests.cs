@@ -39,7 +39,13 @@ internal static partial class Program
                     var control = page.Controls.OfType<SettingsControl>().Single();
                     var settings = (PluginSettings)typeof(BahamutGuidePlugin).GetField("settings", BindingFlags.Instance | BindingFlags.NonPublic).GetValue(plugin);
                     var session = new GuideSession(settings);
-                    Check(Find<Label>(control).Any(x=>x.Text==Localization.Get(settings.Language,"HostedUpdates")), "host directs updates to portal");
+                    Check(!Find<TabPage>(control).Any(t=>t is Roxyz.Act.UI.PluginLanguagePage || t is Roxyz.Act.UI.PluginUpdatePage || t.Text==Localization.Get(settings.Language,"Support")),"host hides shared pages");
+                    string savedLanguage=settings.Language;
+                    foreach (var code in new[]{"ja","ko","zh-CN","en","en","ja"})
+                    {
+                        plugin.SetHostedLanguage(code);
+                        Check(settings.EffectiveLanguage==code && settings.Language==savedLanguage && status.Text==Localization.Get(code,"Started"),"host language applies without changing preference");
+                    }
                     if (cycle == 0)
                     {
                         session.CheckSource(source.SourcePath); session.AcceptSource();

@@ -74,7 +74,7 @@ namespace BahamutGuide
                     actors.Add(new MapActor{Id=1,Kind=0x1FE8,Name="Bahamut",X=0,Y=0});
                     actors.Add(new MapActor{Id=2,Name="Ally A",X=12,Y=6});
                     actors.Add(new MapActor{Id=3,Name="Ally B",X=-8,Y=-12});
-                    actors.Add(new MapActor{Id=4,Self=true,Name=Localization.Get(settings.Language,"MapYou"),X=8,Y=10});
+                    actors.Add(new MapActor{Id=4,Self=true,Name=Localization.Get(settings.EffectiveLanguage,"MapYou"),X=8,Y=10});
                 }
                 // At duty entry the two inactive bosses share Twintania's spawn coordinates.
                 if(phase==0 && actors.Any(a=>a.Kind==0x1FDF && Math.Abs(a.X)<0.1 && Math.Abs(a.Y+15)<0.1))
@@ -88,9 +88,9 @@ namespace BahamutGuide
                     if(route!=null)routeUntil=clock.ElapsedMilliseconds+38000;
                 }
                 var shownRoute=clock.ElapsedMilliseconds<routeUntil?route:null;
-                var key=(arena?"live":"preview")+(shownRoute==null?"":shownRoute.Start+"/"+shownRoute.Step+"/"+shownRoute.Adjusted)+phase+"|"+settings.Language+"|"+settings.MapSize+"|"+settings.MapCones+"|"+string.Join(",",targets)+"|"+
+                var key=(arena?"live":"preview")+(shownRoute==null?"":shownRoute.Start+"/"+shownRoute.Step+"/"+shownRoute.Adjusted)+phase+"|"+settings.EffectiveLanguage+"|"+settings.MapSize+"|"+settings.MapCones+"|"+string.Join(",",targets)+"|"+
                     string.Join(";",actors.Select(a=>a.Id+":"+a.Kind+":"+a.Name+":"+(targets.Length>0?a.X:Math.Round(a.X*5))+":"+(targets.Length>0?a.Y:Math.Round(a.Y*5))+":"+a.Self+":"+a.Party+":"+a.Dead));
-                if(key!=signature){image=ArenaDrawing.Render(actors,targets,phase,settings.MapCones,settings.Language,Math.Max(180,Math.Min(640,settings.MapSize)),shownRoute,!arena);signature=key;}
+                if(key!=signature){image=ArenaDrawing.Render(actors,targets,phase,settings.MapCones,settings.EffectiveLanguage,Math.Max(180,Math.Min(640,settings.MapSize)),shownRoute,!arena);signature=key;}
                 overlay.Present(image,settings.MapX,settings.MapY,true,settings.MapLocked);
                 visible=true;
             }

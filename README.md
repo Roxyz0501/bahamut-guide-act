@@ -28,7 +28,7 @@ ACTでFFXIV_ACT_Pluginを有効にして、「Bahamut Guide」→「戦闘マッ
 
 ## ポータルから読み込む場合
 
-ホストは `InitHostedPlugin(TabPage page, Label status, string pluginPath, string guideDirectory)` に、検証済みの実DLLとバージョン間で共用するGuideDataフォルダーの絶対パスを渡します。設定・取り込み済みXML・バックアップはそのフォルダーに保存します。終了や再読み込みでは `DeInitPlugin()` を呼びます。プラグイン本体の更新はポータルの更新画面から行ってください。
+ホストは `InitHostedPlugin(TabPage page, Label status, string pluginPath, string guideDirectory)` に、検証済みの実DLLとバージョン間で共用するGuideDataフォルダーの絶対パスを渡します。設定・取り込み済みXML・バックアップはそのフォルダーに保存します。終了や再読み込みでは `DeInitPlugin()` を呼びます。ポータルでは子の言語・更新・支援タブを非表示にします。初期化直後と選択変更時に `SetHostedLanguage(string code)` を呼ぶと画面とミニマップに即時反映されます。単体では「言語」タブの保存設定を使用します。プラグイン本体の更新はポータルの更新画面から行ってください。
 
 ## ギミック別の操作
 

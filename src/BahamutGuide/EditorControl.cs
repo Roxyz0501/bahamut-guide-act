@@ -20,6 +20,7 @@ namespace BahamutGuide
         private readonly TextBox diff = new TextBox {Multiline=true,ReadOnly=true,Dock=DockStyle.Fill,ScrollBars=ScrollBars.Both,WordWrap=false};
         private readonly Label status = new Label {AutoSize=true,MaximumSize=new Size(950,0),ForeColor=Color.FromArgb(73,96,128)};
         private readonly List<Tuple<Control,string>> localized=new List<Tuple<Control,string>>();
+        private string lastStatusKey;
         private bool loading;
         private System.Windows.Media.Imaging.BitmapSource bitmap;
         internal event EventHandler SettingsChanged;
@@ -99,10 +100,10 @@ namespace BahamutGuide
         }
         private void Changed()=>SettingsChanged?.Invoke(this,EventArgs.Empty);
         internal bool ConfirmDiscard()=>true;
-        internal void ApplyLanguage(){foreach(var item in localized)item.Item1.Text=T(item.Item2);var index=groups.SelectedIndex;loading=true;for(int i=0;i<groups.Items.Count;i++)groups.Items[i]=GroupName(session.Current.Groups[i]);loading=false;if(index>=0)SelectGroup();}
-        private string T(string key,params object[] args)=>Localization.Get(settings.Language,key,args);
+        internal void ApplyLanguage(){if(lastStatusKey!=null)Message(lastStatusKey);foreach(var item in localized)item.Item1.Text=T(item.Item2);var index=groups.SelectedIndex;loading=true;for(int i=0;i<groups.Items.Count;i++)groups.Items[i]=GroupName(session.Current.Groups[i]);loading=false;if(index>=0)SelectGroup();}
+        private string T(string key,params object[] args)=>Localization.Get(settings.EffectiveLanguage,key,args);
         private void Bind(Control c,string key){localized.Add(Tuple.Create(c,key));c.Text=T(key);}
-        private void Message(string key){var text=T(key);status.Text=text==key?T("OperationError"):text;}
+        private void Message(string key){lastStatusKey=key;var text=T(key);status.Text=text==key?T("OperationError"):text;}
         private Button Button(string key,Action action){var b=new Button {AutoSize=true,MinimumSize=new Size(110,30),BackColor=Color.FromArgb(244,247,251),FlatStyle=FlatStyle.Flat};Bind(b,key);b.Click+=(s,e)=>{try{lock(settings)action();}catch(Exception ex){Message(ex.Message);}};return b;}
         private Control Row(string key,Control c){var p=new FlowLayoutPanel {AutoSize=true,WrapContents=false};var l=new Label {AutoSize=false,Width=150,Height=30,TextAlign=ContentAlignment.MiddleLeft};Bind(l,key);p.Controls.Add(l);p.Controls.Add(c);return p;}
         private Control PathRow(string key,TextBox box,Action browse){var p=new FlowLayoutPanel {Dock=DockStyle.Fill,WrapContents=false,AutoScroll=true};var label=new Label {Width=110,Height=32,TextAlign=ContentAlignment.MiddleLeft};Bind(label,key);p.Controls.Add(label);p.Controls.Add(box);p.Controls.Add(Button("Browse",browse));return p;}

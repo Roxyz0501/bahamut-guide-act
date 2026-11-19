@@ -7,6 +7,8 @@ namespace BahamutGuide
 {
     public sealed class PluginSettings
     {
+        internal string HostedLanguage { get; set; }
+        internal string EffectiveLanguage => HostedLanguage ?? Language;
         public string Language { get; set; }
         public string TimelineFolder { get; set; } = "";
         public string ExtraImageFolder { get; set; } = "";

@@ -48,8 +48,8 @@ namespace BahamutGuide
         }
         internal void ApplyLanguage()
         {
-            Text = Localization.Get(settings.Language, "MapTab");
-            foreach(var pair in labels) pair.Key.Text = Localization.Get(settings.Language,pair.Value);
+            Text = Localization.Get(settings.EffectiveLanguage, "MapTab");
+            foreach(var pair in labels) pair.Key.Text = Localization.Get(settings.EffectiveLanguage,pair.Value);
             map.Configure();
         }
         protected override void Dispose(bool disposing)

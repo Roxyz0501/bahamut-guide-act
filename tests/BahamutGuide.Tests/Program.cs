@@ -95,9 +95,20 @@ internal static partial class Program
                 var top=Find<TabControl>(ui).First();top.SelectedIndex=1;Application.DoEvents();
                 Check(top.SelectedTab.Text==Localization.Get(lang,"MapTab") && top.SelectedTab.Text!="MapTab","localized live map "+lang);CaptureUi(ui,"map-"+lang);
                 Check(Find<TabControl>(ui).All(t=>t is Roxyz.Act.UI.PluginTabs && t.SizeMode==TabSizeMode.Normal && t.Font.Bold),"all tabs use common control "+lang);
-                top.SelectedIndex=2; Application.DoEvents();
-                Check(Find<Label>(top.SelectedTab).Any(l=>l.Text=="Roxyz0501") && Find<LinkLabel>(top.SelectedTab).Any(l=>l.Text=="Roxyz0501/bahamut-guide-act"),"update author and repository "+lang);
-                CaptureUi(ui,"update-"+lang);
+                var languages=Find<Roxyz.Act.UI.PluginLanguagePage>(ui).Single();
+                var selector=Find<ComboBox>(languages).Single();
+                foreach(int choice in new[]{1,2,3,0,0,1})
+                {
+                    selector.SelectedIndex=choice;
+                    Check(s.Language==languages.LanguageCode,"standalone language saved");
+                }
+                selector.SelectedIndex=Array.IndexOf(Roxyz.Act.UI.PluginLanguagePage.Codes,lang);
+                var shared=Find<Roxyz.Act.UI.PluginUpdatePage>(ui).Single();
+                top.SelectedTab=shared;
+                ((Roxyz.Act.UI.PluginTabs)top).AddContentPage(new TabPage("Extra"));
+                Check(top.TabPages[top.TabCount-1].Text==Localization.Get(lang,"Support"),"support remains last");
+                Check(Find<Label>(shared).Any(l=>l.Text.Contains("Roxyz0501")) && Find<LinkLabel>(shared).Any(l=>l.Text.Contains("bahamut-guide-act")),"common update metadata");
+                form.ClientSize=new Size(440,540); Application.DoEvents(); CaptureUi(ui,"update-"+lang);
                 Check(ui.Controls.Count>0,"headless UI "+lang);form.Close();
             }
         }

@@ -64,10 +64,10 @@ namespace BahamutGuide
                 try { return Path.Combine(hosted ? settings.DataDirectory : Path.GetDirectoryName(this.registeredDll()), "Backups", "Timeline"); }
                 catch { throw new IOException("BackupUnavailable"); }
             };
-            try { control = new SettingsControl(settings); page.Text = "Bahamut Guide"; page.Controls.Add(control); }
+            try { control = new SettingsControl(settings, hosted); page.Text = "Bahamut Guide"; page.Controls.Add(control); }
             catch { stopped = true; settingsSaver.StopAndFlush(); updates.Dispose(); cancellation.Dispose(); status.Text = T("OperationError"); return; }
             status.Text = T("Started");
-            if (hosted) { control.ShowHostedUpdates(); return; }
+            if (hosted) return;
             checkHandler = delegate { StartOperation(() => CheckUpdatesAsync(true)); };
             installHandler = (s, e) => StartOperation(InstallAsync);
             laterHandler = delegate { if (lastUpdate?.Release == null) return; settings.SkippedVersion = lastUpdate.Release.Version.ToString(); control.ShowUpdateSkipped(settings.SkippedVersion); };
@@ -76,7 +76,13 @@ namespace BahamutGuide
             control.LaterRequested += laterHandler;
             if (settings.CheckUpdatesOnStartup) StartOperation(() => CheckUpdatesAsync(false));
         }
-        private string T(string key, params object[] args) => Localization.Get(settings?.Language ?? "en", key, args);
+        public void SetHostedLanguage(string code)
+        {
+            if (stopped || control == null || !control.IsHosted) return;
+            control.SetHostedLanguage(code);
+            status.Text = T("Started");
+        }
+        private string T(string key, params object[] args) => Localization.Get(settings?.EffectiveLanguage ?? "en", key, args);
         private void StartOperation(Func<Task> operation)
         {
             if (stopped) return;
