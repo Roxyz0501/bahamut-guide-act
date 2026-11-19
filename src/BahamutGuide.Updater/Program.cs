@@ -26,8 +26,13 @@ namespace BahamutGuide.Updater
                     throw new InvalidDataException("Staged DLL hash mismatch.");
                 var assembly = System.Reflection.AssemblyName.GetAssemblyName(source);
                 if (assembly.Name != "BahamutGuide" || assembly.Version.ToString(3) != version || FileVersionInfo.GetVersionInfo(source).CompanyName != "Roxyz0501") throw new InvalidDataException("InvalidPackage");
-                WaitForExit(processId);
-                ReplaceWithBackup(source, target, expectedHash, version);
+                WaitForExit(processId, long.Parse(Required(values, "--start"), System.Globalization.CultureInfo.InvariantCulture));
+                using (new FileStream(target + ".update-lock", FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None, 1, FileOptions.DeleteOnClose))
+                {
+                    if (!string.Equals(Hash(target), Required(values, "--original"), StringComparison.OrdinalIgnoreCase))
+                        throw new IOException("Installed DLL changed since the update was requested.");
+                    ReplaceWithBackup(source, target, expectedHash, version);
+                }
                 return 0;
             }
             catch (Exception ex)
@@ -44,41 +49,34 @@ namespace BahamutGuide.Updater
 
         internal static void ReplaceWithBackup(string source, string target, string expectedHash, string version)
         {
-            ReplaceWithBackup(source, target, expectedHash, version, (incoming, destination) => File.Copy(incoming, destination, true));
+            ReplaceWithBackup(source, target, expectedHash, version, File.Replace);
         }
 
-        internal static void ReplaceWithBackup(string source, string target, string expectedHash, string version, Action<string, string> installCopy)
+        internal static void ReplaceWithBackup(string source, string target, string expectedHash, string version,
+            Action<string, string, string> replace)
         {
-            var directory = Path.GetDirectoryName(target);
-            Directory.CreateDirectory(directory);
-            var backup = target + ".backup-" + DateTime.Now.ToString("yyyyMMdd-HHmmss-fff");
-            if (File.Exists(backup)) backup += "-" + Guid.NewGuid().ToString("N");
-            var incoming = target + ".update-new";
-            if (File.Exists(incoming)) File.Delete(incoming);
-            File.Copy(source, incoming, true);
-            if (!string.Equals(Hash(incoming), expectedHash, StringComparison.OrdinalIgnoreCase))
-                throw new InvalidDataException("Copied DLL hash mismatch.");
-            var hadOriginal = File.Exists(target);
-            if (hadOriginal) File.Copy(target, backup, false);
+            var suffix = Guid.NewGuid().ToString("N");
+            var backup = target + ".backup-" + suffix;
+            var incoming = target + ".update-" + suffix;
             try
             {
-                installCopy(incoming, target);
+                File.Copy(source, incoming);
+                if (!string.Equals(Hash(incoming), expectedHash, StringComparison.OrdinalIgnoreCase))
+                    throw new InvalidDataException("Copied DLL hash mismatch.");
+                replace(incoming, target, backup);
                 if (!string.Equals(Hash(target), expectedHash, StringComparison.OrdinalIgnoreCase))
                     throw new InvalidDataException("Installed DLL hash mismatch.");
-                File.WriteAllText(Path.Combine(directory, "BahamutGuide.update-result.txt"),
-                    "Updated to " + version + " at " + DateTime.Now.ToString("O") + Environment.NewLine +
-                    (hadOriginal ? "Backup: " + backup : "No previous DLL was present."));
             }
             catch
             {
-                if (hadOriginal && File.Exists(backup)) File.Copy(backup, target, true);
-                else if (!hadOriginal && File.Exists(target)) File.Delete(target);
+                if (File.Exists(backup))
+                {
+                    if (File.Exists(target)) File.Replace(backup, target, null);
+                    else File.Move(backup, target);
+                }
                 throw;
             }
-            finally
-            {
-                if (File.Exists(incoming)) File.Delete(incoming);
-            }
+            finally { if (File.Exists(incoming)) File.Delete(incoming); }
         }
 
         private static void ValidatePaths(string source, string target)
@@ -91,13 +89,13 @@ namespace BahamutGuide.Updater
                 throw new InvalidDataException("Source and target must be different files.");
         }
 
-        private static void WaitForExit(int processId)
+        private static void WaitForExit(int processId, long expectedStart)
         {
             try
             {
                 using (var process = Process.GetProcessById(processId))
                 {
-                    process.WaitForExit();
+                    if (process.StartTime.ToUniversalTime().Ticks == expectedStart) process.WaitForExit();
                 }
             }
             catch (ArgumentException) { }

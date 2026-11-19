@@ -136,7 +136,7 @@ namespace BahamutGuide
             UpdatePackageVerifier.ValidatePluginAssembly(dll, release.Version);
             UpdatePackageVerifier.ValidateUpdaterAssembly(updater, release.Version);
             cancellationToken.ThrowIfCancellationRequested();
-            return new PreparedUpdate { StagedDllPath = dll, StagedUpdaterPath = updater, DllSha256 = UpdatePackageVerifier.ComputeSha256(dll), Release = release };
+            return new PreparedUpdate { StagedDllPath = dll, StagedUpdaterPath = updater, UpdaterSha256 = UpdatePackageVerifier.ComputeSha256(updater), DllSha256 = UpdatePackageVerifier.ComputeSha256(dll), Release = release };
             }
             catch
             {

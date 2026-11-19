@@ -31,6 +31,7 @@ namespace BahamutGuide
     {
         public string StagedDllPath { get; set; }
         public string StagedUpdaterPath { get; set; }
+        public string UpdaterSha256 { get; set; }
         public string DllSha256 { get; set; }
         public ReleaseInfo Release { get; set; }
     }

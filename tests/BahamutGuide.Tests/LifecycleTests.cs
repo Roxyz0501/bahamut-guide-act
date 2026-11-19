@@ -40,7 +40,7 @@ internal static partial class Program
                     for (var cycle = 0; cycle < 2; cycle++)
                     {
                         var transport = new CancelledTransport();
-                        plugin.InitPlugin(page, label, path, new UpdateService(transport));
+                        plugin.InitPlugin(page, label, path, new UpdateService(transport), registeredDll: () => typeof(PluginSettings).Assembly.Location);
                         // A UI context that cannot be pumped while DeInitPlugin blocks.
                         SynchronizationContext.SetSynchronizationContext(new WindowsFormsSynchronizationContext());
                         Task pending;

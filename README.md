@@ -69,7 +69,7 @@ DTD・外部エンティティ、32MiBを超えるXML、5,000件超の画像通�
 
 元XMLの更新とは独立した「更新」タブがあります。[専用GitHub Releases](https://github.com/Roxyz0501/bahamut-guide-act/releases)を使用し、起動時の確認は既定ONで変更できます。draftとprereleaseを除外し、SemVerで比較します。更新がある場合は画面に表示し、「後で」で保留できます。ネットワークエラーでも通常機能を継続します。
 
-明示的に「更新をダウンロードして準備」を選んだ場合だけダウンロードします。HTTPSの許可されたGitHub配布経路、所有者・リポジトリ・タグ・asset名、SHA-256、ZIP内のファイル名、DLLとUpdaterのアセンブリ名・会社名・バージョンを検証します。トークンは不要です。検証後、ACTを終了してDLLを手動で置き換えてください。終了後も動くアップデータは起動しません。
+更新タブには作者、インストール済みのバージョン、GitHubリンクを表示します。「更新する」を押すと配布物をダウンロードします。HTTPSの許可されたGitHub配布経路、所有者・リポジトリ・タグ・asset名、SHA-256、ZIP内のファイル名、DLLとUpdaterのアセンブリ名・会社名・バージョンを検証します。トークンは不要です。検証後にACTを終了すると、配布物内の補助アップデータがACTの登録先にあるDLLをバックアップして自動で置き換えます。準備後に登録先のDLLが変更された場合は置換を中止し、置換後の検証に失敗した場合は元のDLLを復元します。適用後にACTを起動してください。v1.1.0以前から今回の版へは、ACTを終了して配布ZIPを展開してください。
 
 Releaseには`BahamutGuide-vX.Y.Z.zip`と`BahamutGuide-vX.Y.Z.sha256`を公開します。ZIP直下は`BahamutGuide.dll`、`BahamutGuide.Updater.exe`、`README.md`だけです。マニフェストは`SHA256  ZIPファイル名`の1行です。
 

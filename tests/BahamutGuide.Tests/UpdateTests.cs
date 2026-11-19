@@ -2,6 +2,7 @@ using BahamutGuide;
 using Advanced_Combat_Tracker;
 using System;
 using System.IO;
+using System.Diagnostics;
 using System.IO.Compression;
 internal static partial class Program
 {
@@ -28,10 +29,44 @@ internal static partial class Program
         Check(BahamutGuidePlugin.ResolvePluginDllPath(new[] { registration }, instance) == target, "ACT registration priority");
         Throws(() => BahamutGuidePlugin.ResolvePluginDllPath(null, instance), "missing ACT path stops update");
         Directory.CreateDirectory(Path.GetDirectoryName(target)); File.WriteAllText(target, "previous");
-        Throws(() => BahamutGuide.Updater.Program.ReplaceWithBackup(dll, target, hash, System.Reflection.AssemblyName.GetAssemblyName(dll).Version.ToString(3), (s, d) => { File.WriteAllText(d, "partial"); throw new IOException("failure"); }), "simulated copy failure");
+        Throws(() => BahamutGuide.Updater.Program.ReplaceWithBackup(dll, target, hash, System.Reflection.AssemblyName.GetAssemblyName(dll).Version.ToString(3), (s, d, backup) => { File.Replace(s, d, backup); File.WriteAllText(d, "partial"); throw new IOException("failure"); }), "simulated copy failure");
         Check(File.ReadAllText(target) == "previous", "rollback restores original");
         BahamutGuide.Updater.Program.ReplaceWithBackup(dll, target, hash, System.Reflection.AssemblyName.GetAssemblyName(dll).Version.ToString(3)); Check(UpdatePackageVerifier.VerifySha256(target, hash), "successful replacement");
+        UpdateOnExit(dll, target, a);
         Check(!ReleaseParser.Summarize("**bold** `code`").Contains("**"), "release Markdown removed");
+    }
+
+    private static void UpdateOnExit(string dll, string target, SemVersion version)
+    {
+        string helperDir = Path.Combine(artifacts, "検証済み package");
+        Directory.CreateDirectory(helperDir);
+        string helper = Path.Combine(helperDir, "BahamutGuide.Updater.exe");
+        File.Copy(typeof(BahamutGuide.Updater.Program).Assembly.Location, helper);
+        var package = new PreparedUpdate { Release = new ReleaseInfo { Version = version }, StagedDllPath = dll,
+            DllSha256 = UpdatePackageVerifier.ComputeSha256(dll), StagedUpdaterPath = helper,
+            UpdaterSha256 = UpdatePackageVerifier.ComputeSha256(helper) };
+        foreach (bool externalChange in new[]{false,true})
+        {
+            File.WriteAllText(target, "installed");
+            using (var host = Process.Start(new ProcessStartInfo(typeof(Program).Assembly.Location, "--update-test-host") {
+                UseShellExecute=false, CreateNoWindow=true, RedirectStandardInput=true }))
+            {
+                try
+                {
+                    var start = BahamutGuidePlugin.UpdaterStartInfo(package, target, UpdatePackageVerifier.ComputeSha256(target), host);
+                    using (var updater = Process.Start(start))
+                    {
+                        Check(!updater.WaitForExit(350) && File.ReadAllText(target)=="installed", "registered DLL unchanged until host exits");
+                        if(externalChange) File.WriteAllText(target,"external");
+                        host.StandardInput.WriteLine("exit"); host.StandardInput.Close();
+                        Check(updater.WaitForExit(10000), "updater finishes after host exits");
+                        if(externalChange) Check(updater.ExitCode!=0 && File.ReadAllText(target)=="external", "changed DLL preserved");
+                        else Check(updater.ExitCode==0 && UpdatePackageVerifier.VerifySha256(target,package.DllSha256), "verified helper applies DLL to registered path");
+                    }
+                }
+                finally { if(!host.HasExited) host.StandardInput.Close(); host.WaitForExit(5000); }
+            }
+        }
     }
 
 }

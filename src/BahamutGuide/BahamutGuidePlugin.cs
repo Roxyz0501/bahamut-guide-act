@@ -2,6 +2,7 @@ using Advanced_Combat_Tracker;
 using System;
 using System.Collections.Generic;
 using System.Globalization;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Reflection;
@@ -19,9 +20,10 @@ namespace BahamutGuide
         private SettingsControl control;
         private Label status;
         private string settingsPath;
+        private Func<string> registeredDll;
         private SettingsSaveCoordinator settingsSaver;
         private volatile bool stopped = true;
-        private bool checking, preparing;
+        private bool checking, preparing, updateScheduled;
         private int generation;
         private readonly object taskGate = new object();
         private readonly System.Collections.Generic.List<Task> operations = new System.Collections.Generic.List<Task>();
@@ -33,14 +35,15 @@ namespace BahamutGuide
             InitPlugin(page, statusLabel, Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "Advanced Combat Tracker", "Config", "BahamutGuide.xml"), new UpdateService(), Path.Combine(Path.GetDirectoryName(ResolvePluginDllPath(ActGlobals.oFormActMain.ActPlugins, this)), "GuideData"));
         }
 
-        internal void InitPlugin(TabPage page, Label statusLabel, string path, UpdateService service, string dataDirectory = null)
+        internal void InitPlugin(TabPage page, Label statusLabel, string path, UpdateService service, string dataDirectory = null, Func<string> registeredDll = null)
         {
             if (!stopped) throw new InvalidOperationException("Plugin is already initialized.");
-            generation++; stopped = false; checking = preparing = false; lastUpdate = null;
+            generation++; stopped = false; checking = preparing = updateScheduled = false; lastUpdate = null;
             updates = service; cancellation = new CancellationTokenSource();
             operations.Clear();
             status = statusLabel;
             settingsPath = path;
+            this.registeredDll = registeredDll ?? (() => ResolvePluginDllPath(ActGlobals.oFormActMain.ActPlugins, this));
             settings = PluginSettings.Load(settingsPath); settings.Normalize();
             settings.DataDirectory = dataDirectory ?? Path.Combine(Path.GetDirectoryName(path), "GuideData");
             var initialSnapshot = settings.Serialize();
@@ -72,7 +75,7 @@ namespace BahamutGuide
         }
         private async Task CheckUpdatesAsync(bool manual)
         {
-            if (checking || preparing || stopped) return; checking = true; control.SetUpdateChecking();
+            if (checking || preparing || updateScheduled || stopped) return; checking = true; control.SetUpdateChecking();
             var run = generation;
             try
             {
@@ -92,17 +95,57 @@ namespace BahamutGuide
         }
         private async Task InstallAsync()
         {
-            if (preparing || stopped || lastUpdate?.Status != UpdateCheckStatus.UpdateAvailable) return;
+            if (preparing || checking || updateScheduled || stopped || lastUpdate?.Status != UpdateCheckStatus.UpdateAvailable) return;
             preparing = true;
             var run = generation;
             control.SetUpdateText("Preparing");
             try
             {
-                var package = await updates.DownloadAndVerifyAsync(lastUpdate.Release, cancellation.Token).ConfigureAwait(false); if (stopped) return;
-                PostUi(run, () => { control.SetUpdateText("Prepared", package.StagedDllPath); status.Text = T("Prepared", package.StagedDllPath); });
+                var target = registeredDll();
+                var original = UpdatePackageVerifier.ComputeSha256(target);
+                var package = await updates.DownloadAndVerifyAsync(lastUpdate.Release, cancellation.Token).ConfigureAwait(false);
+                PostUi(run, () =>
+                {
+                    try
+                    {
+                        var registered = registeredDll();
+                        if (!string.Equals(registered, target, StringComparison.OrdinalIgnoreCase)) throw new IOException("PluginPathUnavailable");
+                        using (var act = Process.GetCurrentProcess())
+                        using (var helper = Process.Start(UpdaterStartInfo(package, target, original, act)))
+                        {
+                            if (helper == null) throw new IOException("UpdaterUnavailable");
+                        }
+                        updateScheduled = true;
+                        control.SetUpdateText("Prepared");
+                        status.Text = T("Prepared");
+                    }
+                    catch { ShowInstallFailure(); }
+                    finally { preparing = false; }
+                });
             }
-            catch { PostUi(run, () => { control.SetUpdateText("UpdateFailed", T("UpdateProblem")); status.Text = T("UpdateProblem"); }); }
-            finally { preparing = false; }
+            catch { PostUi(run, () => { preparing = false; ShowInstallFailure(); }); }
+        }
+
+        private void ShowInstallFailure()
+        {
+            control.SetUpdateText("UpdateFailed", T("UpdateProblem"));
+            status.Text = T("UpdateProblem");
+        }
+
+        internal static ProcessStartInfo UpdaterStartInfo(PreparedUpdate package, string target, string original, Process act)
+        {
+            var version = package.Release.Version;
+            UpdatePackageVerifier.ValidateUpdaterAssembly(package.StagedUpdaterPath, version);
+            if (!UpdatePackageVerifier.VerifySha256(package.StagedUpdaterPath, package.UpdaterSha256))
+                throw new InvalidDataException("HashFailed");
+            return new ProcessStartInfo
+            {
+                FileName = package.StagedUpdaterPath,
+                Arguments = string.Format(CultureInfo.InvariantCulture,
+                    "--wait-pid {0} --start {1} --source \"{2}\" --target \"{3}\" --sha256 {4} --version {5} --original {6}",
+                    act.Id, act.StartTime.ToUniversalTime().Ticks, package.StagedDllPath, target, package.DllSha256, version, original),
+                UseShellExecute = false, CreateNoWindow = true, WindowStyle = ProcessWindowStyle.Hidden
+            };
         }
         private void PostUi(int run, Action action)
         {

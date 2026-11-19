@@ -15,6 +15,10 @@ internal static partial class Program
     {
         try
         {
+            if(args.SequenceEqual(new[]{"--update-test-host"}))
+            {
+                return Console.ReadLine()=="exit"?0:1;
+            }
             artifacts=Path.Combine(Directory.GetCurrentDirectory(),"artifacts","tests-"+Guid.NewGuid().ToString("N"));Directory.CreateDirectory(artifacts);
             MapTests();
             int mapLog=Array.IndexOf(args,"--map-log");if(mapLog>=0)ReplayMap(args[mapLog+1]);
@@ -90,6 +94,10 @@ internal static partial class Program
                 var nested=Find<TabControl>(ui).Last();nested.SelectedIndex=1;Application.DoEvents();CaptureUi(ui,"source-"+lang);
                 var top=Find<TabControl>(ui).First();top.SelectedIndex=1;Application.DoEvents();
                 Check(top.SelectedTab.Text==Localization.Get(lang,"MapTab") && top.SelectedTab.Text!="MapTab","localized live map "+lang);CaptureUi(ui,"map-"+lang);
+                Check(Find<TabControl>(ui).All(t=>t is Roxyz.Act.UI.PluginTabs && t.SizeMode==TabSizeMode.Normal && t.Font.Bold),"all tabs use common control "+lang);
+                top.SelectedIndex=2; Application.DoEvents();
+                Check(Find<Label>(top.SelectedTab).Any(l=>l.Text=="Roxyz0501") && Find<LinkLabel>(top.SelectedTab).Any(l=>l.Text=="Roxyz0501/bahamut-guide-act"),"update author and repository "+lang);
+                CaptureUi(ui,"update-"+lang);
                 Check(ui.Controls.Count>0,"headless UI "+lang);form.Close();
             }
         }

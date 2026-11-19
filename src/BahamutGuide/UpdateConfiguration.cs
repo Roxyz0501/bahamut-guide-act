@@ -6,6 +6,7 @@ namespace BahamutGuide
     {
         public const string RepositoryOwner = "Roxyz0501";
         public const string RepositoryName = "bahamut-guide-act";
+        public const string RepositoryUrl = "https://github.com/" + RepositoryOwner + "/" + RepositoryName;
         public const string PluginAssemblyName = "BahamutGuide";
         public const string UpdaterAssemblyName = "BahamutGuide.Updater";
         public const string PluginFileName = "BahamutGuide.dll";

@@ -27,8 +27,7 @@ namespace BahamutGuide
         {
             settings=value; Dock=DockStyle.Fill; AutoScroll=true;
             session=new GuideSession(settings);
-            var tabs=new TabControl {Dock=DockStyle.Fill,DrawMode=TabDrawMode.OwnerDrawFixed,ItemSize=new Size(160,30),SizeMode=TabSizeMode.Fixed}; var display=new TabPage {BackColor=Color.White};var update=new TabPage {BackColor=Color.White};
-            tabs.DrawItem+=(sender,e)=>{using(var b=new SolidBrush(e.Index==tabs.SelectedIndex?Color.White:Color.FromArgb(240,242,245)))e.Graphics.FillRectangle(b,e.Bounds);TextRenderer.DrawText(e.Graphics,tabs.TabPages[e.Index].Text,Font,e.Bounds,Color.FromArgb(34,44,61),TextFormatFlags.HorizontalCenter|TextFormatFlags.VerticalCenter);};
+            var tabs=new Roxyz.Act.UI.PluginTabs(null); var display=new TabPage {BackColor=Color.White};var update=new TabPage {BackColor=Color.White};
             Bind(display,"DisplayTab");Bind(update,"SourceTab");tabs.TabPages.AddRange(new[]{display,update});Controls.Add(tabs);
             var layout=new TableLayoutPanel {Dock=DockStyle.Fill,ColumnCount=1,RowCount=3,Padding=new Padding(8)};
             layout.RowStyles.Add(new RowStyle(SizeType.Absolute,54));layout.RowStyles.Add(new RowStyle(SizeType.Percent,100));layout.RowStyles.Add(new RowStyle(SizeType.Absolute,46));display.Controls.Add(layout);
