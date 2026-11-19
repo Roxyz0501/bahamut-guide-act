@@ -10,10 +10,9 @@ internal static partial class Program
     {
         SemVersion a, b; Check(SemVersion.TryParse("v1.10.0", out a) && SemVersion.TryParse("1.9.0", out b) && a.CompareTo(b) > 0, "SemVer numeric");
         Check(!SemVersion.TryParse("1.01.0", out a) && !SemVersion.TryParse("1.0.0-a..b", out a), "invalid SemVer");
-        Check(UpdateService.EvaluateResponse("broken", new Version(1, 0, 0)).Status == UpdateCheckStatus.Failed, "invalid JSON");
+        Throws(() => ReleaseParser.ParseStableReleases("broken"), "invalid JSON");
         var json = "[{\"tag_name\":\"v9.0.0\",\"draft\":false,\"prerelease\":true},{\"tag_name\":\"v1.0.0\",\"draft\":false,\"prerelease\":false}]";
-        Check(UpdateService.EvaluateResponse(json, new Version(1, 0, 0)).Release.Version.ToString() == "1.0.0", "stable only");
-        Check(UpdateService.CheckFromFetcherAsync(() => { throw new IOException("offline"); }, new Version(1, 0, 0)).GetAwaiter().GetResult().Status == UpdateCheckStatus.Failed, "network failure");
+        Check(ReleaseParser.ParseStableReleases(json)[0].Version.ToString() == "1.0.0", "stable only");
         Throws(() => UpdateService.EnsureAllowedUri(new Uri("http://github.com/x"), false), "HTTP rejected");
         Throws(() => UpdateService.EnsureAllowedUri(new Uri("https://evil.githubusercontent.com/x"), false), "arbitrary host rejected");
         Throws(() => UpdatePackageVerifier.SafeDestination(artifacts, "../outside"), "Zip Slip rejected");

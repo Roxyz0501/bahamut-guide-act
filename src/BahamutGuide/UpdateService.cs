@@ -13,7 +13,9 @@ namespace BahamutGuide
     {
         private const long MaximumDownloadBytes = 100L * 1024 * 1024;
         private readonly HttpClient client;
-        private string cachedReleaseJson;
+        private readonly SemaphoreSlim checkGate = new SemaphoreSlim(1, 1);
+        private Version cachedCurrent;
+        private UpdateCheckResult cachedCheck;
         private System.Net.Http.Headers.EntityTagHeaderValue releaseEtag;
         private DateTime cacheExpires;
         internal Func<DateTime> UtcNow = () => DateTime.UtcNow;
@@ -31,64 +33,95 @@ namespace BahamutGuide
         {
             if (!UpdateConfiguration.IsConfigured)
                 return new UpdateCheckResult { Status = UpdateCheckStatus.RepositoryNotConfigured };
+            await checkGate.WaitAsync(cancellationToken).ConfigureAwait(false);
             try
             {
-                EnsureAllowedUri(new Uri(UpdateConfiguration.ReleasesApiUrl), true);
-                return await CheckFromFetcherAsync(async () =>
-                {
-                    if (cachedReleaseJson != null && UtcNow() < cacheExpires) return cachedReleaseJson;
-                    using (var request = new HttpRequestMessage(HttpMethod.Get, UpdateConfiguration.ReleasesApiUrl))
-                    {
-                        if (releaseEtag != null) request.Headers.IfNoneMatch.Add(releaseEtag);
-                        using (var response = await client.SendAsync(request, cancellationToken).ConfigureAwait(false))
-                        {
-                        if (response.StatusCode == System.Net.HttpStatusCode.NotModified && cachedReleaseJson != null) { cacheExpires = UtcNow().AddMinutes(1); return cachedReleaseJson; }
-                        response.EnsureSuccessStatusCode();
-                        var json = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
-                        if (EvaluateResponse(json, currentVersion).Status != UpdateCheckStatus.Failed) { cachedReleaseJson = json; releaseEtag = response.Headers.ETag; cacheExpires = UtcNow().AddMinutes(1); }
-                        return json;
-                        }
-                    }
-                }, currentVersion).ConfigureAwait(false);
+                if (cachedCheck != null && Equals(cachedCurrent, currentVersion) && UtcNow() < cacheExpires)
+                    return cachedCheck;
+                UpdateCheckResult result;
+                try { result = await ProbeLatestAsync(currentVersion, cancellationToken).ConfigureAwait(false); }
+                catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
+                catch (HttpRequestException) { result = ConnectionFailed(); }
+                catch (OperationCanceledException) { result = ConnectionFailed(); }
+                catch (Exception) { result = new UpdateCheckResult { Status = UpdateCheckStatus.Failed }; }
+                cachedCurrent = currentVersion;
+                cachedCheck = result;
+                cacheExpires = UtcNow().AddMinutes(1);
+                return result;
             }
-            catch (Exception ex)
+            finally { checkGate.Release(); }
+        }
+
+        private async Task<UpdateCheckResult> ProbeLatestAsync(Version current, CancellationToken token)
+        {
+            var latest = new Uri(UpdateConfiguration.RepositoryUrl + "/releases/latest");
+            ReleaseInfo release;
+            using (var head = new HttpRequestMessage(HttpMethod.Head, latest))
+            using (var response = await client.SendAsync(head, HttpCompletionOption.ResponseHeadersRead, token).ConfigureAwait(false))
             {
-                return new UpdateCheckResult { Status = UpdateCheckStatus.Failed, Error = ex.GetBaseException().Message };
+                int status = (int)response.StatusCode;
+                if (IsLimited(status)) return new UpdateCheckResult { Status = UpdateCheckStatus.Failed, Error = "CheckLimited" };
+                if (status == 404) return new UpdateCheckResult { Status = UpdateCheckStatus.NoStableRelease };
+                if (status != 301 && status != 302 && status != 303 && status != 307 && status != 308)
+                    throw new InvalidDataException("Expected stable release redirect.");
+                var location = response.Headers.Location;
+                if (location == null) throw new InvalidDataException("Missing stable release tag.");
+                var tagUri = new Uri(latest, location);
+                var prefix = UpdateConfiguration.RepositoryUrl + "/releases/tag/";
+                if (!tagUri.AbsoluteUri.StartsWith(prefix, StringComparison.Ordinal)) throw new InvalidDataException("Unexpected release redirect.");
+                var tag = tagUri.AbsoluteUri.Substring(prefix.Length);
+                SemVersion version;
+                if (!SemVersion.TryParse(tag, out version) || !version.IsStable || tag != "v" + version)
+                    throw new InvalidDataException("Invalid stable release tag.");
+                release = new ReleaseInfo { Tag = tag, Version = version };
+            }
+
+            if (new Version(release.Version.Major, release.Version.Minor, release.Version.Patch)
+                <= new Version(current.Major, current.Minor, Math.Max(current.Build, 0)))
+                return new UpdateCheckResult { Status = UpdateCheckStatus.UpToDate, Release = release };
+
+            var api = new Uri(UpdateConfiguration.ReleaseTagApiPrefix + release.Tag);
+            using (var request = new HttpRequestMessage(HttpMethod.Get, api))
+            {
+                bool sameTag = cachedCheck?.Status == UpdateCheckStatus.UpdateAvailable && cachedCheck.Release.Tag == release.Tag;
+                if (sameTag && releaseEtag != null) request.Headers.IfNoneMatch.Add(releaseEtag);
+                HttpResponseMessage details;
+                try { details = await client.SendAsync(request, token).ConfigureAwait(false); }
+                catch (HttpRequestException) { return FromPublicTag(release, "NotesOffline"); }
+                catch (OperationCanceledException) when (!token.IsCancellationRequested) { return FromPublicTag(release, "NotesOffline"); }
+                using (var response = details)
+                {
+                    if (response.StatusCode == System.Net.HttpStatusCode.NotModified && sameTag && releaseEtag != null)
+                        return cachedCheck;
+                    releaseEtag = null;
+                    int status = (int)response.StatusCode;
+                    if (IsLimited(status)) return FromPublicTag(release, "NotesLimited");
+                    if (status >= 500) return FromPublicTag(release, "NotesOffline");
+                    response.EnsureSuccessStatusCode();
+                    var json = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
+                    var metadata = ReleaseParser.ParseStableReleases("[" + json + "]").SingleOrDefault();
+                    if (metadata == null || metadata.Tag != release.Tag) throw new InvalidDataException("Stable tag mismatch.");
+                    releaseEtag = response.Headers.ETag;
+                    return new UpdateCheckResult { Status = UpdateCheckStatus.UpdateAvailable, Release = metadata };
+                }
             }
         }
 
-        internal static async Task<UpdateCheckResult> CheckFromFetcherAsync(Func<Task<string>> fetcher, Version currentVersion)
-        {
-            try
-            {
-                if (fetcher == null) throw new ArgumentNullException("fetcher");
-                return EvaluateResponse(await fetcher().ConfigureAwait(false), currentVersion);
-            }
-            catch (Exception ex)
-            {
-                return new UpdateCheckResult { Status = UpdateCheckStatus.Failed, Error = ex.GetBaseException().Message };
-            }
-        }
+        private static bool IsLimited(int status) => status == 403 || status == 429;
 
-        internal static UpdateCheckResult EvaluateResponse(string json, Version currentVersion)
+        private static UpdateCheckResult ConnectionFailed() =>
+            new UpdateCheckResult { Status = UpdateCheckStatus.Failed, Error = "CheckOffline" };
+
+        private UpdateCheckResult FromPublicTag(ReleaseInfo release, string messageKey)
         {
-            try
+            releaseEtag = null;
+            foreach (string extension in new[] { ".zip", ".sha256" })
             {
-                var release = ReleaseParser.ParseStableReleases(json).FirstOrDefault();
-                if (release == null) return new UpdateCheckResult { Status = UpdateCheckStatus.NoStableRelease };
-                SemVersion parsedCurrent;
-                if (currentVersion == null || !SemVersion.TryParse(currentVersion.Major + "." + currentVersion.Minor + "." + Math.Max(0, currentVersion.Build), out parsedCurrent))
-                    throw new FormatException("Current version is not valid SemVer.");
-                return new UpdateCheckResult
-                {
-                    Status = release.Version.CompareTo(parsedCurrent) > 0 ? UpdateCheckStatus.UpdateAvailable : UpdateCheckStatus.UpToDate,
-                    Release = release
-                };
+                var name = "BahamutGuide-" + release.Tag + extension;
+                release.Assets.Add(new ReleaseAsset { Name = name, DownloadUrl = UpdateConfiguration.RepositoryUrl +
+                    "/releases/download/" + release.Tag + "/" + name });
             }
-            catch (Exception ex)
-            {
-                return new UpdateCheckResult { Status = UpdateCheckStatus.Failed, Error = ex.GetBaseException().Message };
-            }
+            return new UpdateCheckResult { Status = UpdateCheckStatus.UpdateAvailable, Release = release, Error = messageKey };
         }
 
         public async Task<PreparedUpdate> DownloadAndVerifyAsync(ReleaseInfo release, CancellationToken cancellationToken)
@@ -103,7 +136,7 @@ namespace BahamutGuide
         private async Task<PreparedUpdate> DownloadAndVerifyCoreAsync(ReleaseInfo release, CancellationToken cancellationToken)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            if (release == null) throw new ArgumentNullException("release");
+            if (release?.Version == null || !release.Version.IsStable || release.Tag != "v" + release.Version) throw new InvalidDataException("InvalidPackage");
             var expectedZip = "BahamutGuide-v" + release.Version + ".zip";
             var alternateZip = "BahamutGuide-" + release.Version + ".zip";
             var zip = release.Assets.FirstOrDefault(x => string.Equals(x.Name, expectedZip, StringComparison.OrdinalIgnoreCase) || string.Equals(x.Name, alternateZip, StringComparison.OrdinalIgnoreCase));
@@ -114,7 +147,7 @@ namespace BahamutGuide
             if (zip == null || manifest == null) throw new InvalidDataException("UpdateAssetMissing");
             var assetPrefix = "https://github.com/" + UpdateConfiguration.RepositoryOwner + "/" + UpdateConfiguration.RepositoryName + "/releases/download/" + release.Tag + "/";
             if (!string.Equals(zip.DownloadUrl, assetPrefix + zip.Name, StringComparison.Ordinal) || !string.Equals(manifest.DownloadUrl, assetPrefix + manifest.Name, StringComparison.Ordinal)) throw new InvalidDataException("InvalidPackage");
-            if (zip.Size <= 0 || zip.Size > MaximumDownloadBytes || manifest.Size > 1024 * 1024) throw new InvalidDataException("InvalidPackage");
+            if (zip.Size <= 0 || zip.Size > MaximumDownloadBytes || manifest.Size <= 0 || manifest.Size > 1024 * 1024) throw new InvalidDataException("InvalidPackage");
 
             var root = Path.Combine(Path.GetTempPath(), "BahamutGuideUpdater", Guid.NewGuid().ToString("N"));
             Directory.CreateDirectory(root);
@@ -122,9 +155,10 @@ namespace BahamutGuide
             {
             var zipPath = Path.Combine(root, "package.zip");
             var manifestPath = Path.Combine(root, "package.sha256");
-            await DownloadAsync(zip.DownloadUrl, zipPath, cancellationToken).ConfigureAwait(false);
-            await DownloadAsync(manifest.DownloadUrl, manifestPath, cancellationToken).ConfigureAwait(false);
+            await DownloadAsync(manifest, manifestPath, 1024 * 1024, cancellationToken).ConfigureAwait(false);
             var expected = UpdatePackageVerifier.FindManifestHash(File.ReadAllText(manifestPath, Encoding.UTF8), zip.Name);
+            if (expected == null) throw new InvalidDataException("HashFailed");
+            await DownloadAsync(zip, zipPath, MaximumDownloadBytes, cancellationToken).ConfigureAwait(false);
             if (!UpdatePackageVerifier.VerifySha256(zipPath, expected)) throw new InvalidDataException("HashFailed");
 
             var extracted = Path.Combine(root, "extracted");
@@ -145,9 +179,9 @@ namespace BahamutGuide
             }
         }
 
-        private async Task DownloadAsync(string url, string destination, CancellationToken cancellationToken)
+        private async Task DownloadAsync(ReleaseAsset asset, string destination, long limit, CancellationToken cancellationToken)
         {
-            var uri = new Uri(url);
+            var uri = new Uri(asset.DownloadUrl);
             EnsureAllowedUri(uri, false);
             HttpResponseMessage response = null;
             for (var redirect = 0; redirect <= 5; redirect++)
@@ -160,12 +194,13 @@ namespace BahamutGuide
                 if (location == null) throw new InvalidDataException("InvalidPackage");
                 uri = location.IsAbsoluteUri ? location : new Uri(uri, location);
                 EnsureAllowedUri(uri, false);
+                if (uri.Host == "github.com" && uri.AbsoluteUri != asset.DownloadUrl) throw new InvalidDataException("Unexpected asset redirect.");
             }
             if (response == null) throw new InvalidDataException("InvalidPackage");
             using (response)
             {
                 response.EnsureSuccessStatusCode();
-                if (response.Content.Headers.ContentLength.HasValue && response.Content.Headers.ContentLength.Value > MaximumDownloadBytes)
+                if (response.Content.Headers.ContentLength.HasValue && response.Content.Headers.ContentLength.Value > limit)
                     throw new InvalidDataException("InvalidPackage");
                 using (var input = await response.Content.ReadAsStreamAsync().ConfigureAwait(false))
                 using (var output = File.Create(destination))
@@ -176,9 +211,10 @@ namespace BahamutGuide
                     while ((read = await input.ReadAsync(buffer, 0, buffer.Length, cancellationToken).ConfigureAwait(false)) > 0)
                     {
                         total += read;
-                        if (total > MaximumDownloadBytes) throw new InvalidDataException("InvalidPackage");
+                        if (total > limit) throw new InvalidDataException("InvalidPackage");
                         await output.WriteAsync(buffer, 0, read, cancellationToken).ConfigureAwait(false);
                     }
+                    if (total == 0 || (asset.Size.HasValue && asset.Size.Value != total)) throw new InvalidDataException("Invalid asset length.");
                 }
             }
         }
@@ -192,6 +228,6 @@ namespace BahamutGuide
             if (!allowed) throw new InvalidDataException("Unexpected update host.");
         }
 
-        public void Dispose() { client.Dispose(); }
+        public void Dispose() { client.Dispose(); checkGate.Dispose(); }
     }
 }

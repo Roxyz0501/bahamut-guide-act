@@ -6,7 +6,7 @@ namespace BahamutGuide
     {
         public string Name { get; set; }
         public string DownloadUrl { get; set; }
-        public long Size { get; set; }
+        public long? Size { get; set; }
     }
 
     internal sealed class ReleaseInfo

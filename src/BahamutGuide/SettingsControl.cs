@@ -26,6 +26,7 @@ namespace BahamutGuide
         private readonly Button supportButton = new Button();
         private bool loading = true;
         private readonly LinkLabel repositoryLink = new LinkLabel { AutoSize = true, Anchor = AnchorStyles.Left, Text = "Roxyz0501/bahamut-guide-act" };
+        private string notesMessageKey;
         private string updateMessageKey = "NotChecked";
         private object[] updateMessageArgs = new object[0];
 
@@ -124,12 +125,13 @@ namespace BahamutGuide
             lock (value) { value.Language = CurrentLanguage; value.CheckUpdatesOnStartup = checkUpdates.Checked; value.Normalize(); }
         }
 
-        internal void SetUpdateChecking() { AvailableRelease = null; checkButton.Enabled = false; updateButton.Enabled = laterButton.Enabled = false; latestValue.Text = "—"; releaseNotes.Clear(); updateStatus.ForeColor = Color.FromArgb(73, 96, 128); SetUpdateMessage("Checking"); }
+        internal void SetUpdateChecking() { notesMessageKey = null; AvailableRelease = null; checkButton.Enabled = false; updateButton.Enabled = laterButton.Enabled = false; latestValue.Text = "—"; releaseNotes.Clear(); updateStatus.ForeColor = Color.FromArgb(73, 96, 128); SetUpdateMessage("Checking"); }
         internal void ShowUpdateResult(UpdateCheckResult result, Version current)
         {
             checkButton.Enabled = true; AvailableRelease = result == null ? null : result.Release; currentValue.Text = current.ToString(3); latestValue.Text = result?.Release?.Version?.ToString() ?? "—";
-            releaseNotes.Text = string.IsNullOrWhiteSpace(result?.Release?.Notes) ? T("NoReleaseNotes") : result.Release.Notes; updateButton.Enabled = laterButton.Enabled = result != null && result.Status == UpdateCheckStatus.UpdateAvailable;
-            if (result == null || result.Status == UpdateCheckStatus.Failed || result.Status == UpdateCheckStatus.RepositoryNotConfigured) { updateStatus.ForeColor = Color.FromArgb(176, 65, 56); SetUpdateMessage("CheckFailed"); }
+            notesMessageKey = result?.Status == UpdateCheckStatus.UpdateAvailable ? result.Error : null;
+            releaseNotes.Text = notesMessageKey != null ? T(notesMessageKey) : string.IsNullOrWhiteSpace(result?.Release?.Notes) ? T("NoReleaseNotes") : result.Release.Notes; updateButton.Enabled = laterButton.Enabled = result != null && result.Status == UpdateCheckStatus.UpdateAvailable;
+            if (result == null || result.Status == UpdateCheckStatus.Failed || result.Status == UpdateCheckStatus.RepositoryNotConfigured) { updateStatus.ForeColor = Color.FromArgb(176, 65, 56); SetUpdateMessage(result?.Error ?? "CheckFailed"); }
             else if (result.Status == UpdateCheckStatus.NoStableRelease) { updateStatus.ForeColor = Color.FromArgb(151, 91, 29); SetUpdateMessage("NoRelease"); }
             else if (result.Status == UpdateCheckStatus.UpToDate) { updateStatus.ForeColor = Color.FromArgb(17, 108, 75); SetUpdateMessage("UpToDate", current.ToString(3)); }
             else { updateStatus.ForeColor = Color.FromArgb(176, 65, 56); SetUpdateMessage("UpdateAvailable", current.ToString(3), result.Release.Version); }
@@ -147,7 +149,7 @@ namespace BahamutGuide
             languageLabel.Text = T("Language"); editor.ApplyLanguage(); arenaTab.ApplyLanguage();
             updateTitle.Text = T("UpdateTitle"); updateTitle.Font = new Font(family, 16f, FontStyle.Bold); updateDescription.Text = T("UpdateDescription"); checkUpdates.Text = T("CheckStartup"); checkButton.Text = T("CheckNow"); currentCaption.Text = T("CurrentVersion"); latestCaption.Text = T("LatestVersion"); releaseCaption.Text = T("ReleaseNotes"); updateButton.Text = T("UpdateNow"); laterButton.Text = T("Later");
             supportHeading.Text = T("SupportHeading"); supportHeading.Font = new Font(family, 18f, FontStyle.Bold); supportDescription.Text = T("SupportDescription"); supportOptional.Text = T("SupportBody"); supportOptional.Font = new Font(family, 9.5f, FontStyle.Bold); supportButton.Text = T("SupportButton"); supportSafety.Text = T("SupportSafety");
-            if (string.IsNullOrWhiteSpace(releaseNotes.Text)) releaseNotes.Text = T("NoReleaseNotes"); RefreshUpdateMessage(); tabs.Invalidate(); Invalidate(true);
+            if (notesMessageKey != null) releaseNotes.Text = T(notesMessageKey); else if (string.IsNullOrWhiteSpace(releaseNotes.Text)) releaseNotes.Text = T("NoReleaseNotes"); RefreshUpdateMessage(); tabs.Invalidate(); Invalidate(true);
         }
 
         private void SetUpdateMessage(string key, params object[] args) { updateMessageKey = key; updateMessageArgs = args ?? new object[0]; RefreshUpdateMessage(); }

@@ -33,7 +33,7 @@ internal static partial class Program
             string error;Check(!SettingsControl.TryOpenSupportLink(_=>{throw new IOException();},out error),"support browser failure caught");int links=0;SettingsControl.TryOpenSupportLink(_=>{links++;return null;},out error);Check(links==1,"support explicit click only");
             if(args.Contains("--ui"))RenderUi();
             var index=Array.IndexOf(args,"--timeline");if(index>=0)Actual(args[index+1],args.Length>index+2?args[index+2]:null);
-            if(args.Contains("--release")) {using(var service=new UpdateService()){var release=service.CheckAsync(new Version(0,0,0),System.Threading.CancellationToken.None).GetAwaiter().GetResult().Release;Check(release!=null,"public stable release");var package=service.DownloadAndVerifyAsync(release,System.Threading.CancellationToken.None).GetAwaiter().GetResult();Check(File.Exists(package.StagedDllPath),"public ZIP and SHA verified");}}
+            if(args.Contains("--release")) {using(var service=new UpdateService()){var release=service.CheckAsync(new Version(0,0,0),System.Threading.CancellationToken.None).GetAwaiter().GetResult().Release;Check(release!=null,"public stable release");var expected=Array.IndexOf(args,"--expect-tag");if(expected>=0)Check(release.Tag==args[expected+1],"expected public tag");Console.WriteLine("Verified release tag: "+release.Tag);var package=service.DownloadAndVerifyAsync(release,System.Threading.CancellationToken.None).GetAwaiter().GetResult();Check(File.Exists(package.StagedDllPath),"public ZIP and SHA verified");}}
             Console.WriteLine("PASS "+checks+" checks; artifacts: "+artifacts);return 0;
         }
         catch(Exception ex){Console.Error.WriteLine(ex);return 1;}
@@ -104,12 +104,6 @@ internal static partial class Program
         var window=new PreviewWindow();window.Present(null,0,0,false,false);var handle=new System.Windows.Interop.WindowInteropHelper(window).Handle;
         for(int i=0;i<10;i++){window.SetLocked(i%2==0);window.Present(null,0,0,false,i%2==0);Check(new System.Windows.Interop.WindowInteropHelper(window).Handle==handle,"preview handle remains stable");}window.Close();
     }
-    private sealed class CacheTransport : System.Net.Http.HttpMessageHandler
-    {
-        internal int Requests;internal bool Conditional;
-        protected override System.Threading.Tasks.Task<System.Net.Http.HttpResponseMessage> SendAsync(System.Net.Http.HttpRequestMessage r,System.Threading.CancellationToken t)
-        {Requests++;Conditional=r.Headers.IfNoneMatch.Any();var response=new System.Net.Http.HttpResponseMessage(Conditional?System.Net.HttpStatusCode.NotModified:System.Net.HttpStatusCode.OK);response.Headers.ETag=new System.Net.Http.Headers.EntityTagHeaderValue("\"test\"");response.Content=new System.Net.Http.StringContent("[]");return System.Threading.Tasks.Task.FromResult(response);}
-    }
     private static void CreateHandles(Control c){var h=c.Handle;foreach(Control child in c.Controls)CreateHandles(child);}
     private sealed class RenderForm:Form
     {
@@ -119,8 +113,4 @@ internal static partial class Program
     private static System.Collections.Generic.IEnumerable<T> Find<T>(Control root) where T:Control
     {foreach(Control c in root.Controls){if(c is T)yield return (T)c;foreach(var x in Find<T>(c))yield return x;}}
     private static void CaptureUi(Control ui,string name){using(var image=new Bitmap(ui.Width,ui.Height)){ui.DrawToBitmap(image,new Rectangle(Point.Empty,ui.Size));image.Save(Path.Combine(artifacts,name+".png"));}}
-    private static void UpdateTraffic()
-    {
-        var handler=new CacheTransport();using(var service=new UpdateService(handler)){var now=DateTime.UtcNow;service.UtcNow=()=>now;var token=System.Threading.CancellationToken.None;service.CheckAsync(new Version(1,0),token).GetAwaiter().GetResult();service.CheckAsync(new Version(1,0),token).GetAwaiter().GetResult();Check(handler.Requests==1,"repeat update check reuses memory for one minute");now=now.AddMinutes(2);service.CheckAsync(new Version(1,0),token).GetAwaiter().GetResult();Check(handler.Requests==2&&handler.Conditional,"expired cache checks ETag without body on 304");}
-    }
 }

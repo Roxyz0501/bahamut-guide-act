@@ -14,7 +14,7 @@ namespace BahamutGuide
 
         public static bool IsConfigured => IsSafeSegment(RepositoryOwner) && IsSafeSegment(RepositoryName);
 
-        public static string ReleasesApiUrl => "https://api.github.com/repos/" + RepositoryOwner + "/" + RepositoryName + "/releases?per_page=10";
+        public static string ReleaseTagApiPrefix => "https://api.github.com/repos/" + RepositoryOwner + "/" + RepositoryName + "/releases/tags/";
 
         private static bool IsSafeSegment(string value) => !string.IsNullOrWhiteSpace(value) &&
             value.All(x => char.IsLetterOrDigit(x) || x == '-' || x == '_' || x == '.');
