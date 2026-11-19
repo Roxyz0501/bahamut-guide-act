@@ -26,6 +26,10 @@ ACTでFFXIV_ACT_Pluginを有効にして、「Bahamut Guide」→「戦闘マッ
 
 扇形の仕様とアクション・オブジェクトIDの参考実装は [BossModのEarthshaker](https://github.com/awgil/ffxiv_bossmod/blob/master/BossMod.Ultimate/Stormblood/Ultimate/UCOB/P3EarthShaker.cs) と [UCOBのID定義](https://github.com/awgil/ffxiv_bossmod/blob/master/BossMod.Ultimate/Stormblood/Ultimate/UCOB/UCOBEnums.cs) を参照してください。
 
+## ポータルから読み込む場合
+
+ホストは `InitHostedPlugin(TabPage page, Label status, string pluginPath, string guideDirectory)` に、検証済みの実DLLとバージョン間で共用するGuideDataフォルダーの絶対パスを渡します。設定・取り込み済みXML・バックアップはそのフォルダーに保存します。終了や再読み込みでは `DeInitPlugin()` を呼びます。プラグイン本体の更新はポータルの更新画面から行ってください。
+
 ## ギミック別の操作
 
 - P2ドラゴン配置：円・四角・数字・「調整あり」をひとつのグループとして扱います。各レイヤーの相対位置と元の画像倍率を維持して拡大縮小します。

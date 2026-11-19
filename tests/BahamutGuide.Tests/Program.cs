@@ -22,7 +22,7 @@ internal static partial class Program
             artifacts=Path.Combine(Directory.GetCurrentDirectory(),"artifacts","tests-"+Guid.NewGuid().ToString("N"));Directory.CreateDirectory(artifacts);
             MapTests();
             int mapLog=Array.IndexOf(args,"--map-log");if(mapLog>=0)ReplayMap(args[mapLog+1]);
-            TransformAndSource();UpdateSafety();SettingsPersistence();Lifecycle();UpdateTraffic();
+            HostedLifecycle();TransformAndSource();UpdateSafety();SettingsPersistence();Lifecycle();UpdateTraffic();
             foreach(var lang in new[]{"en","ja","zh-CN","ko"})
             {
                 Check(Localization.Get(lang,"AcceptSource")!="AcceptSource","source translations "+lang);

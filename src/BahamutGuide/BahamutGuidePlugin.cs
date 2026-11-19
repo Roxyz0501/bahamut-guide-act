@@ -35,7 +35,16 @@ namespace BahamutGuide
             InitPlugin(page, statusLabel, Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "Advanced Combat Tracker", "Config", "BahamutGuide.xml"), new UpdateService(), Path.Combine(Path.GetDirectoryName(ResolvePluginDllPath(ActGlobals.oFormActMain.ActPlugins, this)), "GuideData"));
         }
 
-        internal void InitPlugin(TabPage page, Label statusLabel, string path, UpdateService service, string dataDirectory = null, Func<string> registeredDll = null)
+        public void InitHostedPlugin(TabPage page, Label status, string pluginPath, string guideDirectory)
+        {
+            var dll = NormalizePluginPath(pluginPath);
+            if (string.IsNullOrWhiteSpace(guideDirectory) || !Path.IsPathRooted(guideDirectory))
+                throw new ArgumentException("An absolute GuideData path is required.", nameof(guideDirectory));
+            var data = Path.GetFullPath(guideDirectory);
+            InitPlugin(page, status, Path.Combine(data, "BahamutGuide.xml"), new UpdateService(), data, () => dll, true);
+        }
+
+        internal void InitPlugin(TabPage page, Label statusLabel, string path, UpdateService service, string dataDirectory = null, Func<string> registeredDll = null, bool hosted = false)
         {
             if (!stopped) throw new InvalidOperationException("Plugin is already initialized.");
             generation++; stopped = false; checking = preparing = updateScheduled = false; lastUpdate = null;
@@ -52,18 +61,19 @@ namespace BahamutGuide
             settingsSaver = new SettingsSaveCoordinator(settingsPath, () => settings.Serialize(), initialSnapshot, initialDisk);
             settings.InitializeLanguageIfMissing(CultureInfo.CurrentUICulture);
             settings.BackupDirectoryResolver = () => {
-                try { return Path.Combine(Path.GetDirectoryName(ResolvePluginDllPath(ActGlobals.oFormActMain.ActPlugins, this)), "Backups", "Timeline"); }
+                try { return Path.Combine(hosted ? settings.DataDirectory : Path.GetDirectoryName(this.registeredDll()), "Backups", "Timeline"); }
                 catch { throw new IOException("BackupUnavailable"); }
             };
             try { control = new SettingsControl(settings); page.Text = "Bahamut Guide"; page.Controls.Add(control); }
             catch { stopped = true; settingsSaver.StopAndFlush(); updates.Dispose(); cancellation.Dispose(); status.Text = T("OperationError"); return; }
+            status.Text = T("Started");
+            if (hosted) { control.ShowHostedUpdates(); return; }
             checkHandler = delegate { StartOperation(() => CheckUpdatesAsync(true)); };
             installHandler = (s, e) => StartOperation(InstallAsync);
             laterHandler = delegate { if (lastUpdate?.Release == null) return; settings.SkippedVersion = lastUpdate.Release.Version.ToString(); control.ShowUpdateSkipped(settings.SkippedVersion); };
             control.CheckUpdatesRequested += checkHandler;
             control.InstallUpdateRequested += installHandler;
             control.LaterRequested += laterHandler;
-            status.Text = T("Started");
             if (settings.CheckUpdatesOnStartup) StartOperation(() => CheckUpdatesAsync(false));
         }
         private string T(string key, params object[] args) => Localization.Get(settings?.Language ?? "en", key, args);

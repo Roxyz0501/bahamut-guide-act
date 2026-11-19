@@ -138,6 +138,11 @@ namespace BahamutGuide
         }
         internal void SetUpdateText(string key, string detail = null) { updateStatus.ForeColor = key == "Prepared" ? Color.FromArgb(17, 108, 75) : key == "UpdateFailed" ? Color.FromArgb(176, 65, 56) : Color.FromArgb(73, 96, 128); SetUpdateMessage(key, detail == null ? new object[0] : new object[] { detail }); var done = key == "Prepared" || key == "UpdateFailed" || key == "Later"; if (done) updateButton.Enabled = laterButton.Enabled = false; checkButton.Enabled = key != "Preparing" && key != "Prepared"; if (key == "Preparing") updateButton.Enabled = laterButton.Enabled = false; }
         internal void ShowUpdateSkipped(string version) { updateButton.Enabled = laterButton.Enabled = false; updateStatus.ForeColor = Color.FromArgb(73, 96, 128); SetUpdateMessage("UpdateSkipped", version); }
+        internal void ShowHostedUpdates()
+        {
+            checkUpdates.Enabled = checkButton.Enabled = updateButton.Enabled = laterButton.Enabled = false;
+            SetUpdateMessage("HostedUpdates");
+        }
         internal void FocusUpdateTab() { tabs.SelectedTab = updateTab; }
 
         private void Changed(object sender, EventArgs e) { if (loading) return; ApplyTo(settings); if (ReferenceEquals(sender, language)) ApplyLanguage(); SettingsChanged?.Invoke(this, EventArgs.Empty); }

@@ -21,6 +21,44 @@ internal static partial class Program
         }
     }
 
+    private static void HostedLifecycle()
+    {
+        var data = Path.Combine(artifacts, "ホスト GuideData");
+        var source = Setup("host-source");
+        File.WriteAllText(source.SourcePath, Fixture);
+        File.WriteAllText(source.TargetPath, Fixture);
+        var plugin = new BahamutGuidePlugin();
+        using (var page = new TabPage())
+        using (var status = new Label())
+        {
+            for (int cycle = 0; cycle < 2; cycle++)
+            {
+                plugin.InitHostedPlugin(page, status, typeof(BahamutGuidePlugin).Assembly.Location, data);
+                try
+                {
+                    var control = page.Controls.OfType<SettingsControl>().Single();
+                    var settings = (PluginSettings)typeof(BahamutGuidePlugin).GetField("settings", BindingFlags.Instance | BindingFlags.NonPublic).GetValue(plugin);
+                    var session = new GuideSession(settings);
+                    Check(Find<Label>(control).Any(x=>x.Text==Localization.Get(settings.Language,"HostedUpdates")), "host directs updates to portal");
+                    if (cycle == 0)
+                    {
+                        session.CheckSource(source.SourcePath); session.AcceptSource();
+                        session.Current.Setting(settings,session.Current.Groups[0]).Enabled=false;
+                        session.Apply(source.TargetPath);
+                        Check(File.Exists(settings.LastBackup) && settings.LastBackup.StartsWith(data+Path.DirectorySeparatorChar), "host timeline backup in stable GuideData");
+                    }
+                    else
+                    {
+                        Check(!session.Current.Setting(settings,session.Current.Groups[0]).Enabled,"host reload preserves timeline settings");
+                        session.RestoreTarget();
+                        Check(File.ReadAllText(source.TargetPath)==Fixture,"host reload restores backup");
+                    }
+                }
+                finally { plugin.DeInitPlugin(); }
+            }
+        }
+    }
+
     private static void Lifecycle()
     {
         Exception failure = null;
